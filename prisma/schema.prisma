@@ -1,0 +1,758 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+  output     = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  OWNER
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  BANNED
+  ARCHIVED
+}
+
+enum RentalStatus {
+  PENDING
+  CONFIRMED
+  PAID
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum InsuranceLevel {
+  NONE
+  BASIC
+  PREMIUM
+  FULL
+}
+
+enum VIPLevel {
+  NONE
+  STANDARD
+  PREMIUM
+  MAXIMUM
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  RENTAL_REQUEST
+  RENTAL_CONFIRMED
+  RENTAL_CANCELLED
+  PAYMENT_RECEIVED
+  PAYMENT_REFUNDED
+  REVIEW_RECEIVED
+  WITHDRAWAL_REQUEST
+  SYSTEM_ALERT
+  PROMOTIONAL
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum DisputeType {
+  DAMAGE
+  NOT_RECEIVED
+  NOT_RETURNED
+  WRONG_ITEM
+  QUALITY_ISSUE
+  OTHER
+}
+
+enum FraudStatus {
+  CLEAN
+  SUSPECT
+  FLAGGED
+  BANNED
+}
+
+enum ReportStatus {
+  PENDING
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+enum VerificationLevel {
+  BASIC
+  VERIFIED
+  PREMIUM
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DamageReportStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SETTLED
+}
+
+enum DepositStatus {
+  PENDING
+  HELD
+  REFUNDED
+  WITHHELD
+}
+
+model User {
+  id                String            @id @default(uuid())
+  email             String            @unique
+  password          String?
+  firstName         String
+  lastName          String
+  phone             String?
+  avatar            String?
+  bio               String?
+  role              UserRole          @default(USER)
+  status            UserStatus        @default(PENDING)
+  birthDate         DateTime? // Для проверки возраста
+  phoneVerified     Boolean           @default(false)
+  phoneVerifiedAt   DateTime?
+  isVerified        Boolean           @default(false)
+  verificationLevel VerificationLevel @default(BASIC) // 'BASIC', 'VERIFIED', 'PREMIUM'
+  fraudScoreId      String?
+  provider          AuthProvider      @default(LOCAL)
+  providerId        String?
+  emailVerified     Boolean           @default(false)
+  verificationToken String?
+  resetToken        String?
+  resetExpires      DateTime?
+  rating            Float             @default(0.0)
+  totalReviews      Int               @default(0)
+  balance           Float             @default(0.0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  lastSeen          DateTime?
+
+  // Relations
+  products             Product[]
+  rentals              Rental[]             @relation("Renter")
+  ownerRentals         Rental[]             @relation("Owner")
+  reviewsGiven         Review[]             @relation("Reviewer")
+  reviewsReceived      Review[]             @relation("Reviewee")
+  rentalReviews        Review[] // For the rental relation if needed
+  addresses            Address[]
+  verifications        UserVerification[]
+  fraudScore           UserFraudScore?      @relation(fields: [fraudScoreId], references: [id])
+  disputesInitiated    Dispute[]
+  disputeEvidences     DisputeEvidence[]
+  disputeMessages      DisputeMessage[]
+  damageClaims         DamageClaim[]        @relation("DamageClaimRenter")
+  ownedDamageClaims    DamageClaim[]        @relation("DamageClaimOwner")
+  deviceFingerprints   DeviceFingerprint[]
+  financialReports     FinancialReport[]
+  suspiciousActivities SuspiciousActivity[]
+  ipBlocksCreated      IpBlock[]
+  messagesReceived     Message[]            @relation("Receiver")
+  messagesSent         Message[]            @relation("Sender")
+  notifications        Notification[]
+  favorites            Favorite[]
+  transactions         Transaction[]
+  vipSubscriptions     VIPSubscription[]
+  reportsMade          Report[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model UserVerification {
+  id              String             @id @default(uuid())
+  userId          String
+  documentType    String // 'ID_CARD', 'PASSPORT', 'DRIVER_LICENSE'
+  documentFront   String
+  documentBack    String?
+  selfiePhoto     String
+  status          VerificationStatus @default(PENDING) // 'PENDING', 'VERIFIED', 'REJECTED'
+  rejectionReason String?
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("user_verifications")
+}
+
+model UserFraudScore {
+  id          String      @id @default(uuid())
+  userId      String      @unique
+  score       Int         @default(0)
+  status      FraudStatus @default(CLEAN)
+  flags       Json        @default("[]")
+  lastChecked DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  users       User[]
+
+  @@index([status])
+  @@index([score])
+  @@map("user_fraud_scores")
+}
+
+model SuspiciousActivity {
+  id        String    @id @default(uuid())
+  userId    String?
+  ipAddress String
+  userAgent String?
+  action    String
+  details   Json?
+  riskLevel RiskLevel @default(LOW) // 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+  isBlocked Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([ipAddress])
+  @@index([riskLevel])
+  @@index([createdAt])
+  @@map("suspicious_activities")
+}
+
+model Dispute {
+  id              String        @id @default(uuid())
+  rentalId        String
+  initiatorId     String
+  type            DisputeType
+  title           String
+  description     String
+  status          DisputeStatus @default(OPEN)
+  resolution      String?
+  amountRefunded  Float?
+  depositWithheld Float?
+  adminNotes      String?
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  rental    Rental            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  initiator User              @relation(fields: [initiatorId], references: [id])
+  evidences DisputeEvidence[]
+  messages  DisputeMessage[]
+
+  @@index([rentalId])
+  @@index([initiatorId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("disputes")
+}
+
+model DisputeEvidence {
+  id          String   @id @default(uuid())
+  disputeId   String
+  type        String // 'PHOTO', 'VIDEO', 'DOCUMENT'
+  url         String
+  description String?
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  dispute  Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  uploader User    @relation(fields: [uploadedBy], references: [id])
+
+  @@index([disputeId])
+  @@index([uploadedBy])
+  @@map("dispute_evidences")
+}
+
+model DisputeMessage {
+  id        String   @id @default(uuid())
+  disputeId String
+  senderId  String
+  message   String
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id])
+
+  @@index([disputeId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("dispute_messages")
+}
+
+model DamageClaim {
+  id            String             @id @default(uuid())
+  rentalId      String
+  ownerId       String
+  renterId      String
+  description   String
+  repairCost    Float
+  status        DamageReportStatus @default(PENDING) // 'PENDING', 'APPROVED', 'REJECTED', 'SETTLED'
+  evidence      Json               @default("[]")
+  settledAmount Float?
+  settledAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  rental Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  owner  User   @relation("DamageClaimOwner", fields: [ownerId], references: [id])
+  renter User   @relation("DamageClaimRenter", fields: [renterId], references: [id])
+
+  @@index([rentalId])
+  @@index([ownerId])
+  @@index([renterId])
+  @@index([status])
+  @@map("damage_claims")
+}
+
+model FinancialReport {
+  id                String   @id @default(uuid())
+  userId            String?
+  type              String // 'USER_MONTHLY', 'PLATFORM_MONTHLY', 'TAX'
+  period            String // '2024-01', '2024-Q1', '2024'
+  totalRevenue      Float    @default(0)
+  platformFees      Float    @default(0)
+  vatAmount         Float    @default(0)
+  netAmount         Float    @default(0)
+  transactionsCount Int      @default(0)
+  reportData        Json
+  generatedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([period])
+  @@map("financial_reports")
+}
+
+model IpBlock {
+  id        String    @id @default(uuid())
+  ipAddress String    @unique
+  reason    String
+  category  String // 'FRAUD', 'SPAM', 'ABUSE', 'OTHER'
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  createdBy String
+
+  creator User @relation(fields: [createdBy], references: [id])
+
+  @@index([ipAddress])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@map("ip_blocks")
+}
+
+model DeviceFingerprint {
+  id          String   @id @default(uuid())
+  userId      String?
+  fingerprint String   @unique
+  userAgent   String
+  ipAddress   String
+  isBlocked   Boolean  @default(false)
+  lastSeen    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([fingerprint])
+  @@index([isBlocked])
+  @@map("device_fingerprints")
+}
+
+model Address {
+  id         String   @id @default(uuid())
+  userId     String
+  country    String   @default("Moldova")
+  city       String
+  street     String
+  building   String
+  apartment  String?
+  postalCode String?
+  latitude   Float?
+  longitude  Float?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+model Product {
+  id                String        @id @default(uuid())
+  title             String
+  description       String
+  categoryId        String
+  ownerId           String
+  pricePerDay       Float
+  pricePerWeek      Float?
+  pricePerMonth     Float?
+  status            ProductStatus @default(DRAFT)
+  condition         String
+  brand             String?
+  model             String?
+  year              Int?
+  dimensions        String?
+  weight            Float?
+  rules             String?
+  deposit           Float?
+  maxRentalDays     Int?
+  maxRentalDuration Int           @default(90) // Максимальный срок аренды в днях
+  requiresDeposit   Boolean       @default(true)
+  depositAmount     Float?
+  depositPercentage Float?        @default(50.0) // Процент от стоимости аренды
+  isHighValue       Boolean       @default(false)
+  insuranceRequired Boolean       @default(false)
+  minRentalDays     Int           @default(1)
+  availability      Json          @default("[]") // JSON array of unavailable dates
+  views             Int           @default(0)
+  rating            Float         @default(0.0)
+  totalReviews      Int           @default(0)
+  vipLevel          VIPLevel      @default(NONE)
+  vipExpiresAt      DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  owner            User               @relation(fields: [ownerId], references: [id])
+  category         Category           @relation(fields: [categoryId], references: [id])
+  images           ProductImage[]
+  rentals          Rental[]
+  reviews          Review[]
+  favorites        Favorite[]
+  vipSubscriptions VIPSubscription[]
+  attributes       ProductAttribute[]
+
+  @@index([ownerId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([vipLevel])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  url       String
+  order     Int
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model ProductAttribute {
+  id        String   @id @default(uuid())
+  productId String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_attributes")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  parentId    String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryToCategory")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Rental {
+  id                 String         @id @default(uuid())
+  productId          String
+  renterId           String
+  ownerId            String
+  startDate          DateTime
+  endDate            DateTime
+  totalDays          Int
+  baseAmount         Float
+  insuranceAmount    Float          @default(0.0)
+  platformFee        Float
+  totalAmount        Float
+  depositAmount      Float?
+  depositStatus      DepositStatus  @default(PENDING) // 'PENDING', 'HELD', 'REFUNDED', 'WITHHELD'
+  depositRefundedAt  DateTime?
+  netEarnings        Float? // Чистая прибыль владельца после всех вычетов
+  vatAmount          Float? // НДС
+  taxAmount          Float? // Налоги
+  insuranceLevel     InsuranceLevel @default(NONE)
+  status             RentalStatus   @default(PENDING)
+  paymentStatus      PaymentStatus  @default(PENDING)
+  stripePaymentId    String?
+  stripeRefundId     String?
+  cancellationReason String?
+  confirmedAt        DateTime?
+  paidAt             DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  ownerReviewed      Boolean        @default(false)
+  renterReviewed     Boolean        @default(false)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // Relations
+  product      Product       @relation(fields: [productId], references: [id])
+  renter       User          @relation("Renter", fields: [renterId], references: [id])
+  owner        User          @relation("Owner", fields: [ownerId], references: [id])
+  disputes     Dispute[]
+  messages     Message[]
+  damageClaims DamageClaim[]
+  review       Review?
+
+  @@index([productId])
+  @@index([renterId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@map("rentals")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  rentalId   String   @unique
+  reviewerId String
+  revieweeId String
+  rating     Int // 1-5
+  comment    String?
+  type       String // "OWNER_TO_RENTER" or "RENTER_TO_OWNER"
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  rental    Rental   @relation(fields: [rentalId], references: [id])
+  reviewer  User     @relation("Reviewer", fields: [reviewerId], references: [id])
+  reviewee  User     @relation("Reviewee", fields: [revieweeId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  product   Product? @relation(fields: [productId], references: [id])
+  productId String?
+
+  @@index([rentalId])
+  @@index([reviewerId])
+  @@index([revieweeId])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+model Message {
+  id         String    @id @default(uuid())
+  senderId   String
+  receiverId String
+  rentalId   String?
+  content    String
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  // Relations
+  sender   User    @relation("Sender", fields: [senderId], references: [id])
+  receiver User    @relation("Receiver", fields: [receiverId], references: [id])
+  rental   Rental? @relation(fields: [rentalId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([rentalId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+  @@map("favorites")
+}
+
+model Transaction {
+  id                String        @id @default(uuid())
+  userId            String
+  type              String // "DEPOSIT", "WITHDRAWAL", "RENTAL_INCOME", "COMMISSION", "REFUND"
+  amount            Float
+  balance           Float
+  description       String
+  metadata          Json?
+  status            PaymentStatus @default(PENDING)
+  stripeId          String?
+  taxAmount         Float?
+  vatAmount         Float?
+  netAmount         Float?
+  ipAddress         String?
+  deviceFingerprint String?
+  riskScore         Int           @default(0)
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model VIPSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String?
+  level     VIPLevel
+  amount    Float
+  duration  Int // in days
+  expiresAt DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([userId])
+  @@index([productId])
+  @@index([level])
+  @@index([expiresAt])
+  @@map("vip_subscriptions")
+}
+
+model PromoCode {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  type      String // "PERCENTAGE", "FIXED"
+  value     Float
+  maxUses   Int?
+  uses      Int       @default(0)
+  minAmount Float?
+  startDate DateTime?
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  @@index([code])
+  @@index([isActive])
+  @@map("promo_codes")
+}
+
+model Report {
+  id          String    @id @default(uuid())
+  reporterId  String
+  targetType  String // "USER", "PRODUCT", "REVIEW"
+  targetId    String
+  reason      String
+  description String?
+  status      String    @default("PENDING") // "PENDING", "INVESTIGATING", "RESOLVED", "DISMISSED"
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime  @default(now())
+
+  reporter User @relation(fields: [reporterId], references: [id])
+
+  @@index([reporterId])
+  @@index([targetType, targetId])
+  @@index([status])
+  @@map("reports")
+}
+
+model Settings {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}

@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "A:\\p2p-rent-platform\\backend\\logs\\.b8684d311ce7d876b232135a7e48692f700a4efd-audit.json",
+    "files": [
+        {
+            "date": 1765058267929,
+            "name": "A:\\p2p-rent-platform\\backend\\logs\\security-rejections-2025-12-06.log",
+            "hash": "d413698ed9610225e5f71a962e46ccbb490473253a319e9cfc56235e26e3445b"
+        }
+    ],
+    "hashType": "sha256"
+}

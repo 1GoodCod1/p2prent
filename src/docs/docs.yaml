@@ -1,0 +1,1817 @@
+openapi: 3.0.0
+info:
+  title: RentShare API
+  description: |
+    ## Арендная платформа для обмена товарами
+    **RentShare** - это современная платформа для аренды товаров между пользователями.
+    
+    ### Основные возможности:
+    - 📦 Аренда разнообразных товаров
+    - 👤 Регистрация и верификация пользователей
+    - 💳 Безопасные платежи через Stripe
+    - ⭐ Система рейтингов и отзывов
+    - 🏆 VIP-статусы для продвижения товаров
+    - 🔔 Уведомления в реальном времени
+    - 💰 Вывод средств владельцам
+    - 🛡️ Административная панель
+    
+    ### Безопасность:
+    - JWT аутентификация
+    - Rate limiting
+    - Валидация данных
+    - CORS настройки
+    
+    ### Технологии:
+    - Node.js + Express
+    - PostgreSQL + Prisma ORM
+    - Redis для кэширования
+    - Socket.io для чата
+    
+    ### Коды ответов:
+    - 200: Успех
+    - 201: Создано
+    - 400: Ошибка валидации
+    - 401: Не авторизован
+    - 403: Доступ запрещен
+    - 404: Не найдено
+    - 429: Слишком много запросов
+    - 500: Внутренняя ошибка сервера
+
+  version: 1.0.0
+  contact:
+    name: RentShare Support
+    email: support@rentshare.com
+  license:
+    name: Proprietary
+    url: https://rentshare.com/terms
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server
+  - url: https://api.rentshare.com/api/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: Регистрация, вход, управление аккаунтом
+  - name: Products
+    description: Управление товарами для аренды
+  - name: Rentals
+    description: Аренда товаров
+  - name: VIP
+    description: VIP-статусы и продвижение
+  - name: Reviews
+    description: Отзывы и рейтинги
+  - name: Withdrawals
+    description: Вывод средств
+  - name: Owner Stats
+    description: Статистика для владельцев
+  - name: Admin
+    description: Административные функции
+  - name: Webhooks
+    description: Webhook-обработчики
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Используйте JWT токен в формате:
+        ```
+        Authorization: Bearer <ваш_токен>
+        ```
+
+  schemas:
+    # ============ USER SCHEMAS ============
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        firstName:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        phone:
+          type: string
+          nullable: true
+          example: "+37360000000"
+        avatar:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://example.com/avatar.jpg"
+        role:
+          type: string
+          enum: [USER, OWNER, ADMIN]
+          example: "USER"
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, SUSPENDED, BANNED]
+          example: "ACTIVE"
+        emailVerified:
+          type: boolean
+          example: true
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          example: 4.5
+        totalReviews:
+          type: integer
+          example: 10
+        balance:
+          type: number
+          format: float
+          example: 1500.50
+        createdAt:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserRegistration:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "Password123"
+        firstName:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        phone:
+          type: string
+          nullable: true
+          example: "+37360000000"
+
+    UserLogin:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "Password123"
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        phone:
+          type: string
+          example: "+37360000001"
+        bio:
+          type: string
+          example: "Люблю арендовать инструменты!"
+        avatar:
+          type: string
+          format: uri
+          example: "https://example.com/new-avatar.jpg"
+
+    # ============ PRODUCT SCHEMAS ============
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Дрель Bosch Professional"
+        description:
+          type: string
+          example: "Мощная дрель для домашнего использования"
+        categoryId:
+          type: string
+          format: uuid
+        owner:
+          $ref: '#/components/schemas/User'
+        pricePerDay:
+          type: number
+          format: float
+          example: 15.99
+        pricePerWeek:
+          type: number
+          format: float
+          example: 99.99
+        pricePerMonth:
+          type: number
+          format: float
+          example: 299.99
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, INACTIVE, BANNED, ARCHIVED]
+          example: "ACTIVE"
+        condition:
+          type: string
+          example: "Отличное"
+        brand:
+          type: string
+          nullable: true
+          example: "Bosch"
+        model:
+          type: string
+          nullable: true
+          example: "GSB 18V-55"
+        views:
+          type: integer
+          example: 150
+        rating:
+          type: number
+          format: float
+          example: 4.8
+        totalReviews:
+          type: integer
+          example: 12
+        vipLevel:
+          type: string
+          enum: [NONE, STANDARD, PREMIUM, MAXIMUM]
+          example: "STANDARD"
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductImage'
+        attributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductAttribute'
+
+    ProductCreate:
+      type: object
+      required:
+        - title
+        - description
+        - categoryId
+        - pricePerDay
+        - condition
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: "Дрель Bosch Professional"
+        description:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          example: "Мощная дрель для домашнего использования..."
+        categoryId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        pricePerDay:
+          type: number
+          format: float
+          minimum: 1
+          example: 15.99
+        pricePerWeek:
+          type: number
+          format: float
+          minimum: 1
+          example: 99.99
+        pricePerMonth:
+          type: number
+          format: float
+          minimum: 1
+          example: 299.99
+        condition:
+          type: string
+          enum: [NEW, LIKE_NEW, GOOD, FAIR, POOR]
+          example: "GOOD"
+        brand:
+          type: string
+          maxLength: 50
+          example: "Bosch"
+        model:
+          type: string
+          maxLength: 50
+          example: "GSB 18V-55"
+        year:
+          type: integer
+          minimum: 1900
+          example: 2023
+        dimensions:
+          type: string
+          maxLength: 100
+          example: "25x20x8 см"
+        weight:
+          type: number
+          format: float
+          minimum: 0
+          example: 2.5
+        rules:
+          type: string
+          maxLength: 1000
+          example: "Только для совершеннолетних"
+        deposit:
+          type: number
+          format: float
+          minimum: 0
+          example: 50
+        maxRentalDays:
+          type: integer
+          minimum: 1
+          example: 30
+        minRentalDays:
+          type: integer
+          minimum: 1
+          example: 1
+
+    ProductImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        order:
+          type: integer
+        isPrimary:
+          type: boolean
+
+    ProductAttribute:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          example: "Мощность"
+        value:
+          type: string
+          example: "550 Вт"
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Электроника"
+        description:
+          type: string
+          example: "Техника и электронные устройства"
+        icon:
+          type: string
+          example: "📱"
+        order:
+          type: integer
+          example: 1
+        isActive:
+          type: boolean
+          example: true
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    # ============ RENTAL SCHEMAS ============
+    Rental:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        renterId:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        totalDays:
+          type: integer
+          example: 3
+        baseAmount:
+          type: number
+          format: float
+          example: 47.97
+        insuranceAmount:
+          type: number
+          format: float
+          example: 5.00
+        platformFee:
+          type: number
+          format: float
+          example: 4.80
+        totalAmount:
+          type: number
+          format: float
+          example: 57.77
+        insuranceLevel:
+          type: string
+          enum: [NONE, BASIC, PREMIUM, FULL]
+          example: "BASIC"
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, PAID, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
+          example: "IN_PROGRESS"
+        paymentStatus:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED, REFUNDED]
+          example: "COMPLETED"
+        confirmedAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        product:
+          $ref: '#/components/schemas/Product'
+        renter:
+          $ref: '#/components/schemas/User'
+        owner:
+          $ref: '#/components/schemas/User'
+
+    RentalCreate:
+      type: object
+      required:
+        - productId
+        - startDate
+        - endDate
+      properties:
+        productId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440002"
+        startDate:
+          type: string
+          format: date
+          example: "2024-01-15"
+        endDate:
+          type: string
+          format: date
+          example: "2024-01-18"
+        insuranceLevel:
+          type: string
+          enum: [NONE, BASIC, PREMIUM, FULL]
+          default: "NONE"
+          example: "BASIC"
+        promoCode:
+          type: string
+          maxLength: 20
+          example: "WELCOME10"
+
+    RentalCost:
+      type: object
+      properties:
+        totalDays:
+          type: integer
+          example: 3
+        baseAmount:
+          type: number
+          format: float
+          example: 47.97
+        insuranceAmount:
+          type: number
+          format: float
+          example: 5.00
+        platformFee:
+          type: number
+          format: float
+          example: 4.80
+        commissionDiscount:
+          type: number
+          format: float
+          example: 0.50
+        totalAmount:
+          type: number
+          format: float
+          example: 57.77
+        deposit:
+          type: number
+          format: float
+          example: 50
+
+    # ============ VIP SCHEMAS ============
+    VIPPlan:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Standard VIP"
+        price:
+          type: number
+          format: float
+          example: 50
+        duration:
+          type: integer
+          example: 7
+        benefits:
+          type: array
+          items:
+            type: string
+          example:
+            - "3x more views"
+            - "Priority in search results"
+
+    VIPPurchase:
+      type: object
+      required:
+        - productId
+        - level
+      properties:
+        productId:
+          type: string
+          format: uuid
+        level:
+          type: string
+          enum: [STANDARD, PREMIUM, MAXIMUM]
+          example: "STANDARD"
+
+    # ============ REVIEW SCHEMAS ============
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rentalId:
+          type: string
+          format: uuid
+        reviewerId:
+          type: string
+          format: uuid
+        revieweeId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: "Отличный товар, все как в описании!"
+        type:
+          type: string
+          enum: [OWNER_TO_RENTER, RENTER_TO_OWNER]
+          example: "RENTER_TO_OWNER"
+        createdAt:
+          type: string
+          format: date-time
+        reviewer:
+          $ref: '#/components/schemas/User'
+
+    ReviewCreate:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          maxLength: 1000
+          example: "Отличный товар!"
+
+    # ============ WITHDRAWAL SCHEMAS ============
+    WithdrawalRequest:
+      type: object
+      required:
+        - amount
+        - method
+        - accountDetails
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 100
+          example: 1000
+        method:
+          type: string
+          enum: [bank_transfer, card, other]
+          example: "bank_transfer"
+        accountDetails:
+          type: object
+          properties:
+            bankName:
+              type: string
+              example: "Moldova Agroindbank"
+            accountNumber:
+              type: string
+              example: "MD12AG000000000000000000"
+            recipientName:
+              type: string
+              example: "Иван Иванов"
+
+    # ============ RESPONSE SCHEMAS ============
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Операция выполнена успешно"
+        data:
+          type: object
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Ошибка валидации"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "email"
+              message:
+                type: string
+                example: "Некорректный email"
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20
+            total:
+              type: integer
+              example: 150
+            pages:
+              type: integer
+              example: 8
+
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      description: Номер страницы
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    limitParam:
+      name: limit
+      in: query
+      description: Количество элементов на странице
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    idParam:
+      name: id
+      in: path
+      required: true
+      description: ID ресурса
+      schema:
+        type: string
+        format: uuid
+    productIdParam:
+      name: productId
+      in: path
+      required: true
+      description: ID товара
+      schema:
+        type: string
+        format: uuid
+    rentalIdParam:
+      name: rentalId
+      in: path
+      required: true
+      description: ID аренды
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    UnauthorizedError:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: "Authentication required"
+            code: "UNAUTHORIZED"
+
+    ForbiddenError:
+      description: Доступ запрещен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: "Insufficient permissions"
+            code: "FORBIDDEN"
+
+    NotFoundError:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: "Product not found"
+            code: "NOT_FOUND"
+
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: "Validation failed"
+            errors:
+              - field: "email"
+                message: "Некорректный email"
+            code: "VALIDATION_ERROR"
+
+    TooManyRequests:
+      description: Слишком много запросов
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: "Too many requests from this IP"
+            code: "RATE_LIMIT_EXCEEDED"
+
+paths:
+  # ==================== HEALTH CHECK ====================
+  /health:
+    get:
+      tags:
+        - System
+      summary: Проверка состояния сервера
+      description: Возвращает статус сервера и подключенных сервисов
+      responses:
+        '200':
+          description: Сервер работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                    example: "RentShare API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  websocket:
+                    type: string
+                    example: "connected"
+
+  # ==================== AUTHENTICATION ====================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Регистрация нового пользователя
+      description: Создает нового пользователя и отправляет email для верификации
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration successful. Check your email for verification"
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tokens:
+                        type: object
+                        properties:
+                          accessToken:
+                            type: string
+                            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                          refreshToken:
+                            type: string
+                            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Пользователь уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "User already exists"
+                code: "USER_EXISTS"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Вход в систему
+      description: Аутентификация пользователя и получение токенов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tokens:
+                        type: object
+                        properties:
+                          accessToken:
+                            type: string
+                          refreshToken:
+                            type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Invalid credentials"
+                code: "INVALID_CREDENTIALS"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh-token:
+    post:
+      tags:
+        - Authentication
+      summary: Обновление токенов
+      description: Получение новой пары access/refresh токенов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Токены обновлены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+        '401':
+          description: Недействительный refresh токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Invalid refresh token"
+                code: "INVALID_REFRESH_TOKEN"
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Получение профиля пользователя
+      description: Возвращает информацию о текущем пользователе
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Профиль получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Authentication
+      summary: Обновление профиля пользователя
+      description: Обновляет информацию профиля текущего пользователя
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Profile updated successfully"
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ==================== PRODUCTS ====================
+  /products:
+    get:
+      tags:
+        - Products
+      summary: Поиск товаров
+      description: Поиск и фильтрация товаров по различным параметрам
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - name: categoryId
+          in: query
+          description: ID категории
+          schema:
+            type: string
+            format: uuid
+        - name: minPrice
+          in: query
+          description: Минимальная цена (в день)
+          schema:
+            type: number
+            format: float
+        - name: maxPrice
+          in: query
+          description: Максимальная цена (в день)
+          schema:
+            type: number
+            format: float
+        - name: condition
+          in: query
+          description: Состояние товара
+          schema:
+            type: string
+            enum: [NEW, LIKE_NEW, GOOD, FAIR, POOR]
+        - name: search
+          in: query
+          description: Поисковый запрос
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          description: Поле для сортировки
+          schema:
+            type: string
+            enum: [price, rating, createdAt, views]
+            default: createdAt
+        - name: sortOrder
+          in: query
+          description: Порядок сортировки
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Список товаров
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Product'
+
+    post:
+      tags:
+        - Products
+      summary: Создание нового товара
+      description: Создает новый товар для аренды
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                categoryId:
+                  type: string
+                pricePerDay:
+                  type: number
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '201':
+          description: Товар создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Product created successfully"
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /products/{id}:
+    get:
+      tags:
+        - Products
+      summary: Получение информации о товаре
+      description: Возвращает полную информацию о товаре, увеличивает счетчик просмотров
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Информация о товаре
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /products/{productId}/calculate:
+    get:
+      tags:
+        - Rentals
+      summary: Расчет стоимости аренды
+      description: Рассчитывает стоимость аренды товара на указанный период
+      parameters:
+        - $ref: '#/components/parameters/productIdParam'
+        - name: startDate
+          in: query
+          required: true
+          description: Дата начала аренды
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          description: Дата окончания аренды
+          schema:
+            type: string
+            format: date
+        - name: insuranceLevel
+          in: query
+          description: Уровень страховки
+          schema:
+            type: string
+            enum: [NONE, BASIC, PREMIUM, FULL]
+            default: NONE
+      responses:
+        '200':
+          description: Расчет стоимости
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/RentalCost'
+        '400':
+          description: Ошибка расчета
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Invalid dates"
+                code: "INVALID_DATE_RANGE"
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== RENTALS ====================
+  /rentals:
+    post:
+      tags:
+        - Rentals
+      summary: Создание запроса на аренду
+      description: Создает новый запрос на аренду товара
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RentalCreate'
+      responses:
+        '201':
+          description: Запрос на аренду создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Rental request created successfully"
+                  data:
+                    type: object
+                    properties:
+                      rental:
+                        $ref: '#/components/schemas/Rental'
+                      cost:
+                        $ref: '#/components/schemas/RentalCost'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Конфликт (например, товар уже забронирован)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Product is not available for the selected dates"
+                code: "PRODUCT_UNAVAILABLE"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /rentals/user/rentals:
+    get:
+      tags:
+        - Rentals
+      summary: Получение аренд пользователя
+      description: Возвращает список аренд пользователя (как арендатора или владельца)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - name: type
+          in: query
+          description: Тип аренд
+          schema:
+            type: string
+            enum: [asRenter, asOwner]
+            default: asRenter
+        - name: status
+          in: query
+          description: Статус аренды
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, PAID, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
+      responses:
+        '200':
+          description: Список аренд
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Rental'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /rentals/{id}/confirm:
+    post:
+      tags:
+        - Rentals
+      summary: Подтверждение аренды
+      description: Подтверждение запроса на аренду владельцем товара
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Аренда подтверждена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Rental confirmed successfully"
+                  data:
+                    $ref: '#/components/schemas/Rental'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /rentals/{id}/payment:
+    post:
+      tags:
+        - Rentals
+      summary: Оплата аренды
+      description: Оплата подтвержденной аренды через Stripe
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - paymentMethodId
+              properties:
+                paymentMethodId:
+                  type: string
+                  example: "pm_1N2n8v2eZvKYlo2CZp1N2n8v"
+      responses:
+        '200':
+          description: Оплата успешно обработана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Payment processed successfully"
+                  data:
+                    type: object
+                    properties:
+                      rental:
+                        $ref: '#/components/schemas/Rental'
+                      paymentIntent:
+                        type: object
+        '400':
+          description: Ошибка оплаты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Payment failed"
+                code: "PAYMENT_FAILED"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  # ==================== VIP ====================
+  /vip/plans:
+    get:
+      tags:
+        - VIP
+      summary: Получение VIP-планов
+      description: Возвращает список доступных VIP-планов и их преимуществ
+      responses:
+        '200':
+          description: Список VIP-планов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      standard:
+                        $ref: '#/components/schemas/VIPPlan'
+                      premium:
+                        $ref: '#/components/schemas/VIPPlan'
+                      maximum:
+                        $ref: '#/components/schemas/VIPPlan'
+
+  /vip/purchase:
+    post:
+      tags:
+        - VIP
+      summary: Покупка VIP-статуса
+      description: Покупка VIP-статуса для товара
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VIPPurchase'
+      responses:
+        '200':
+          description: VIP-статус приобретен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "VIP subscription purchased successfully"
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== REVIEWS ====================
+  /reviews/rental/{rentalId}:
+    post:
+      tags:
+        - Reviews
+      summary: Создание отзыва
+      description: Создание отзыва об аренде
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rentalId
+          in: path
+          required: true
+          description: ID аренды
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreate'
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Review created successfully"
+                  data:
+                    $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Отзыв уже оставлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "You have already reviewed this rental"
+                code: "ALREADY_REVIEWED"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ==================== WITHDRAWALS ====================
+  /withdrawals/request:
+    post:
+      tags:
+        - Withdrawals
+      summary: Запрос на вывод средств
+      description: Создание запроса на вывод средств со счета пользователя
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+      responses:
+        '201':
+          description: Запрос на вывод создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Withdrawal request submitted successfully"
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Недостаточно средств
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Insufficient balance"
+                code: "INSUFFICIENT_FUNDS"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /withdrawals/history:
+    get:
+      tags:
+        - Withdrawals
+      summary: История выводов
+      description: Получение истории выводов средств пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+      responses:
+        '200':
+          description: История выводов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ==================== OWNER STATISTICS ====================
+  /owner-stats/dashboard:
+    get:
+      tags:
+        - Owner Stats
+      summary: Дашборд владельца
+      description: Получение статистики и аналитики для владельца товаров
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: timeRange
+          in: query
+          description: Период для статистики
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, 1y]
+            default: 30d
+      responses:
+        '200':
+          description: Статистика владельца
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      overview:
+                        type: object
+                        properties:
+                          totalProducts:
+                            type: integer
+                          activeProducts:
+                            type: integer
+                          totalRentals:
+                            type: integer
+                          completedRentals:
+                            type: integer
+                          totalRevenue:
+                            type: number
+                      revenue:
+                        type: object
+                        properties:
+                          totalRevenue:
+                            type: number
+                          platformFees:
+                            type: number
+                          netRevenue:
+                            type: number
+                          dailyAverage:
+                            type: number
+                      timeRange:
+                        type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Пользователь не является владельцем
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Only owners can access this resource"
+                code: "OWNER_ONLY"
+
+  # ==================== ADMIN ====================
+  /admin/dashboard:
+    get:
+      tags:
+        - Admin
+      summary: Административный дашборд
+      description: Получение общей статистики платформы (только для администраторов)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: timeRange
+          in: query
+          description: Период для статистики
+          schema:
+            type: string
+            enum: [1d, 7d, 30d, 90d]
+            default: 7d
+      responses:
+        '200':
+          description: Административная статистика
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      overview:
+                        type: object
+                        properties:
+                          totalUsers:
+                            type: integer
+                          totalProducts:
+                            type: integer
+                          totalRentals:
+                            type: integer
+                          totalRevenue:
+                            type: number
+                      trends:
+                        type: object
+                        properties:
+                          userGrowth:
+                            type: number
+                          rentalGrowth:
+                            type: number
+                          revenueGrowth:
+                            type: number
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Только для администраторов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Admin access required"
+                code: "ADMIN_ONLY"
+
+  # ==================== WEBHOOKS ====================
+  /webhook/stripe:
+    post:
+      tags:
+        - Webhooks
+      summary: Stripe webhook handler
+      description: Обработчик webhook-событий от Stripe (платежи, возвраты и т.д.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook успешно обработан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        '400':
+          description: Неверная подпись webhook
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Webhook signature verification failed"
+                code: "INVALID_SIGNATURE"
